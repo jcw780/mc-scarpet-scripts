@@ -1,6 +1,7 @@
 __config() -> {
     'commands' -> {
-        'sort_mixed <input_pos> <mixed_pos> <single_pos>' -> 'sort_mixed',
+        'sort_mixed <input_pos> <mixed_pos> <single_pos>' -> ['sort_mixed', true],
+        'sort_mixed <input_pos> <mixed_pos> <single_pos> <recolor>' -> 'sort_mixed',
         'start_randomize_items <intended_items_pos> <interference_items_pos> <intended_spread> <interference_spread> <mean_duration> <interference_chance> <drop_position_pos> <pause_chance> <pause_duration>' -> 'randomize_items',
         'start_randomize_items <intended_items_pos> <interference_items_pos> <intended_spread> <interference_spread> <mean_duration> <interference_chance> <drop_position_pos>' -> ['randomize_items', 0.0, 1],
         'stop_randomize_items' -> 'randomize_items_stop',
@@ -14,12 +15,13 @@ __config() -> {
         'pause_chance' -> {'type' -> 'float', 'min' -> 0.0, 'max' -> 1.0, 'suggest' -> [0.1]},
         'pause_duration' -> {'type' -> 'int', 'min' -> 1, 'suggest' -> [500, 1000]},
         'summary' -> {'type' -> 'bool', 'suggest' -> [true]},
+        'recolor' -> {'type' -> 'bool', 'suggest' -> [true]},
     },
     'strict' -> true,
-    'scope' -> 'global'
+    'scope' -> 'global',
 };
 
-sort_mixed(input_pos, mixed_pos, single_pos) -> (
+sort_mixed(input_pos, mixed_pos, single_pos, recolor) -> (
     input_block = block(input_pos);
     mixed_block = block(mixed_pos);
     single_block = block(single_pos);
@@ -28,15 +30,18 @@ sort_mixed(input_pos, mixed_pos, single_pos) -> (
         item = inventory_get(input_block, slot);
         if(item:0 == null, continue());
         mixed = false;
+        empty_box = true;
+        full_box_slots = 0;
         if(item:0 == 'shulker_box',
             if((box_items = parse_nbt(item:2:'components'):'minecraft:container') != null,
+                empty_box = false;
                 first_item = null;
                 for(box_items,
                     inner_item_type = _:'item':'id';
+                    if(stack_limit(inner_item_type) == _:'item':'count', full_box_slots += 1);
                     if(first_item == null, first_item = inner_item_type,
                         if(first_item != inner_item_type,
                             mixed = true;
-                            break;
                         );
                     );
                 );
@@ -47,7 +52,17 @@ sort_mixed(input_pos, mixed_pos, single_pos) -> (
 
         destination = if(mixed, mixed_block, single_block);
         if ((dest_slot = inventory_find(destination, null)) != null,
-            inventory_set(destination, dest_slot, item:1, item:0, item:2);
+            moved_nbt = item:2;
+            if(recolor,
+                if(empty_box,
+                    moved_nbt:'id' = 'white_shulker_box';,
+                    if(full_box_slots == 27,
+                        moved_nbt:'id' = 'black_shulker_box';
+                    );
+                );
+            );
+
+            inventory_set(destination, dest_slot, item:1, item:0, moved_nbt);
             inventory_set(input_block, slot, 0);
         ,
             print(str('Cannot find free slot in %s at: %s', if(mixed, 'mixed', 'sorted'), if(mixed, mixed_pos, single_pos)));
